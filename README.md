@@ -1,11 +1,11 @@
-# AWS Shopping Agent
+# Redis Shopping Agent
 
 
 ## Quickstart
 
 ### Clone the repo
 ```
-git clone git@github.com:xuro-langchain/aws-shopping-agent.git
+git clone git@github.com:xuro-langchain/redis-shopping-agent.git
 ```
 
 ### Create an environment 
