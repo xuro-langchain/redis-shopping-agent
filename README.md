@@ -11,7 +11,7 @@ git clone git@github.com:xuro-langchain/redis-shopping-agent.git
 ### Create an environment 
 Ensure you have a recent version of pip and python installed
 ```
-$ cd aws-shopping-agent
+$ cd redis-shopping-agent
 # Copy the .env.example file to .env
 cp .env.example .env
 ```
