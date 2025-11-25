@@ -40,7 +40,7 @@ You can run the agents in this repository locally using `langgraph dev`. This gi
 
 ```bash
 # From the root directory, start the LangGraph development server
-langgraph dev
+uv run langgraph dev
 
 # This will start a local server and provide:
 # - API endpoint for your agents (typically http://localhost:8123)

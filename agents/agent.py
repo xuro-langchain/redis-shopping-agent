@@ -16,7 +16,7 @@ from langgraph.managed.is_last_step import RemainingSteps
 from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 
-from agents.subagents import invoice_subagent
+from agents.subagents import invoice_subagent, music_subagent
 from agents.prompts import (
     supervisor_system_prompt,
     extract_customer_info_prompt,
@@ -58,12 +58,25 @@ def call_invoice_subagent(runtime: ToolRuntime, query: str):
     subagent_response = result["messages"][-1].content
     return subagent_response
 
+@tool(
+    name_or_callable="music_catalog_subagent",
+    description="""An agent that can assist with all music-related queries. This agent has access to user's saved music preferences. It can also retrieve information about the digital music store's music catalog (albums, tracks, songs, etc.) from the database."""
+)
+def call_music_catalog_subagent(runtime: ToolRuntime, query: str):
+    print(f"music catalog subagent input: {query}")
+    result = music_subagent.invoke({
+        "messages": [{"role": "user", "content": query}],
+        "loaded_memory": runtime.state.get("loaded_memory", "")
+    })
+    subagent_response = result["messages"][-1].content
+    return subagent_response
+
 # TODO: Add Opensearch E-commerce Agent as tool
 
 supervisor = create_agent(
     name="supervisor",
     model="openai:gpt-5", 
-    tools=[call_invoice_subagent], # TODO: Add Opensearch E-commerce Agent as tool
+    tools=[call_invoice_subagent, call_music_catalog_subagent], # TODO: Add Opensearch E-commerce Agent as tool
     system_prompt=supervisor_system_prompt, 
     state_schema=State,
     checkpointer=RedisSaver(
