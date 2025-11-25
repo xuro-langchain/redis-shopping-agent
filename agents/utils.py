@@ -10,7 +10,7 @@ from langchain_community.utilities.sql_database import SQLDatabase
 
 
 # NOTE: Configure the LLM that you want to use
-llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
+llm = ChatOpenAI(model_name="gpt-4.1", temperature=0)
 # llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0)
 # llm = ChatVertexAI(model_name="gemini-1.5-flash-002", temperature=0)
 

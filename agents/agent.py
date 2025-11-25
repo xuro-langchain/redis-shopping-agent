@@ -1,11 +1,15 @@
+import os
 from typing import Annotated, List,NotRequired
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
+from redis import Redis
 
 from langchain.messages import SystemMessage, HumanMessage, AIMessage
 from langchain.agents import create_agent
 from langchain.tools import tool, ToolRuntime
 
+from langgraph.store.redis import RedisStore
+from langgraph.checkpoint.redis import RedisSaver
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.managed.is_last_step import RemainingSteps
@@ -57,11 +61,16 @@ def call_invoice_subagent(runtime: ToolRuntime, query: str):
 # TODO: Add Opensearch E-commerce Agent as tool
 
 supervisor = create_agent(
-    model="openai:gpt-4o", 
-    tools=[call_invoice_subagent], # TODO: Add Opensearch E-commerce Agent as tool
     name="supervisor",
+    model="openai:gpt-5", 
+    tools=[call_invoice_subagent], # TODO: Add Opensearch E-commerce Agent as tool
     system_prompt=supervisor_system_prompt, 
-    state_schema=State, 
+    state_schema=State,
+    checkpointer=RedisSaver(
+        redis_client=Redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379")
+        )
+    )
 )
 
 # ------------------------------------------------------------
@@ -161,4 +170,16 @@ workflow_builder.add_edge("load_memory", "supervisor")
 workflow_builder.add_edge("supervisor", "create_memory")
 workflow_builder.add_edge("create_memory", END)
 
-graph = workflow_builder.compile(name="multi_agent_verify")
+graph = workflow_builder.compile(
+    name="multi_agent_verify",
+    checkpointer=RedisSaver(
+        redis_client=Redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379")
+        )
+    ),
+    store=RedisStore(
+        conn=Redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379")
+        )
+    )
+)
