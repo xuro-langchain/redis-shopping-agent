@@ -1,14 +1,12 @@
-import os
 from typing_extensions import TypedDict
 from typing import Annotated, NotRequired
 from langgraph.graph.message import AnyMessage, add_messages
-from langgraph.checkpoint.redis import RedisSaver
 from langchain.agents import create_agent
-from redis import Redis
 
 from agents.prompts import invoice_subagent_prompt, music_subagent_prompt
 from agents.tools import invoice_tools, music_tools
 from agents.utils import llm
+from agents.checkpoint import get_checkpointer
 
 
 class InputState(TypedDict):
@@ -28,11 +26,7 @@ invoice_subagent = create_agent(
     tools=invoice_tools, 
     system_prompt=invoice_subagent_prompt, 
     state_schema=State,
-    checkpointer=RedisSaver(
-        redis_client=Redis.from_url(
-            os.getenv("REDIS_URL", "redis://localhost:6379")
-        )
-    )
+    checkpointer=get_checkpointer()
 )
 
 # ------------------------------------------------------------
@@ -44,11 +38,7 @@ music_subagent = create_agent(
     tools=music_tools, 
     system_prompt=music_subagent_prompt, 
     state_schema=State,
-    checkpointer=RedisSaver(
-        redis_client=Redis.from_url(
-            os.getenv("REDIS_URL", "redis://localhost:6379")
-        )
-    )
+    checkpointer=get_checkpointer()
 )
 
 # ------------------------------------------------------------

@@ -1,15 +1,11 @@
-import os
-from typing import Annotated, List,NotRequired
+from typing import Annotated, List, NotRequired
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
-from redis import Redis
 
 from langchain.messages import SystemMessage, HumanMessage, AIMessage
 from langchain.agents import create_agent
 from langchain.tools import tool, ToolRuntime
 
-from langgraph.store.redis import RedisStore
-from langgraph.checkpoint.redis import RedisSaver
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.managed.is_last_step import RemainingSteps
@@ -28,6 +24,7 @@ from agents.utils import (
     get_customer_id_from_identifier,
     format_user_memory
 )
+from agents.checkpoint import get_checkpointer, get_store
 
 
 # ------------------------------------------------------------
@@ -79,11 +76,7 @@ supervisor = create_agent(
     tools=[call_invoice_subagent, call_music_catalog_subagent], # TODO: Add Opensearch E-commerce Agent as tool
     system_prompt=supervisor_system_prompt, 
     state_schema=State,
-    checkpointer=RedisSaver(
-        redis_client=Redis.from_url(
-            os.getenv("REDIS_URL", "redis://localhost:6379")
-        )
-    )
+    checkpointer=get_checkpointer()
 )
 
 # ------------------------------------------------------------
@@ -136,7 +129,7 @@ def should_interrupt(state: State):
 
 def load_memory(state: State, store: BaseStore):
     """Loads music preferences from users, if available."""
-    user_id = state["customer_id"]
+    user_id = str(state["customer_id"])
     namespace = ("memory_profile", user_id)
     existing_memory = store.get(namespace, "user_memory")
     formatted_memory = ""
@@ -156,7 +149,8 @@ def create_memory(state: State, store: BaseStore):
     formatted_system_message = SystemMessage(content=create_memory_prompt.format(conversation=state["messages"], memory_profile=formatted_memory))
     updated_memory = llm.with_structured_output(UserProfile).invoke([formatted_system_message])
     key = "user_memory"
-    store.put(namespace, key, {"memory": updated_memory})
+    # Convert Pydantic model to dict for JSON serialization
+    store.put(namespace, key, {"memory": updated_memory.model_dump()})
 
 
 # ------------------------------------------------------------
@@ -185,14 +179,6 @@ workflow_builder.add_edge("create_memory", END)
 
 graph = workflow_builder.compile(
     name="multi_agent_verify",
-    checkpointer=RedisSaver(
-        redis_client=Redis.from_url(
-            os.getenv("REDIS_URL", "redis://localhost:6379")
-        )
-    ),
-    store=RedisStore(
-        conn=Redis.from_url(
-            os.getenv("REDIS_URL", "redis://localhost:6379")
-        )
-    )
+    checkpointer=get_checkpointer(),
+    store=get_store()
 )

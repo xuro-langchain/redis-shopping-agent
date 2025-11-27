@@ -66,6 +66,10 @@ def format_user_memory(user_data):
     """Formats music preferences from users, if available."""
     profile = user_data['memory']
     result = ""
-    if hasattr(profile, 'music_preferences') and profile.music_preferences:
+    # Handle both dict (from Redis) and Pydantic model formats
+    if isinstance(profile, dict):
+        if profile.get('music_preferences'):
+            result += f"Music Preferences: {', '.join(profile['music_preferences'])}"
+    elif hasattr(profile, 'music_preferences') and profile.music_preferences:
         result += f"Music Preferences: {', '.join(profile.music_preferences)}"
     return result.strip()
