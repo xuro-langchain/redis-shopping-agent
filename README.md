@@ -6,17 +6,12 @@ A multi-agent customer support system for a digital music store, powered by Lang
 
 - 🎵 **Music Catalog Agent** - Browse artists, albums, songs, and genres
 - 🧾 **Invoice Agent** - Access purchase history and invoice details
-- 🧠 **Long-term Memory** - Remembers user preferences across conversations (stored in Redis)
+- 🧠 **Long-term Memory** - Remembers user preferences across conversations backed by Redis
 - 💾 **Persistent Threads** - Conversations survive restarts via Redis checkpointing
 - 🔐 **Account Verification** - Human-in-the-loop verification flow
+- 📝 **Customizable Prompts** -- Prompts dynamically loaded from Redis to allow for versioning and updates remotely
 
 ## Quickstart
-
-### Clone the repo
-```bash
-git clone git@github.com:redis-developer/redis-shopping-agent.git
-cd redis-shopping-agent
-```
 
 ### Set up environment
 ```bash
@@ -30,17 +25,14 @@ cp .env.example .env
 
 ### Install dependencies
 ```bash
-# Install uv if you haven't already
+# Install uv if you haven't already!
 pip install uv
 
 # Install the package
 uv sync
-
-# Activate the virtual environment
-source .venv/bin/activate
 ```
 
-### Start Redis
+### Start [Redis](https://redis.io/cloud)
 ```bash
 # Using Docker
 docker run -d --name redis -p 6379:6379 redis:latest
@@ -125,28 +117,8 @@ For a more detailed walkthrough, check out the included notebooks:
 uv run jupyter notebook
 
 # Open demo.ipynb for the main demo
-# Open multi_agent.ipynb for multi-agent architecture details
 ```
 
----
-
-## Running with LangGraph Studio
-
-You can also run the agents using `langgraph dev` for a visual debugging experience:
-
-```bash
-# Start the LangGraph development server
-uv run langgraph dev
-
-# This provides:
-# - API endpoint (typically http://localhost:8123)
-# - LangGraph Studio UI for testing and debugging
-# - Hot-reloading during development
-```
-
-The `langgraph.json` configuration file defines which agents are available.
-
----
 
 ## Architecture
 

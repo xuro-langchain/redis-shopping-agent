@@ -46,7 +46,6 @@ class State(InputState):
     description="""An agent that can assistant with all invoice-related queries. It can retrieve information about a customers past purchases or invoices."""
 )
 def call_invoice_subagent(runtime: ToolRuntime, query: str):
-    print('made it here')
     print(f"invoice subagent input: {query}")
     result = invoice_subagent.invoke({
         "messages": [{"role": "user", "content": query}],
@@ -180,5 +179,5 @@ workflow_builder.add_edge("create_memory", END)
 graph = workflow_builder.compile(
     name="multi_agent_verify",
     checkpointer=get_checkpointer(),
-    store=get_store()
+    store=get_store(namespace="preferences")
 )

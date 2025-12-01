@@ -1,17 +1,7 @@
-import os
-from redis import Redis
 from langgraph.checkpoint.redis import RedisSaver
 from langgraph.store.redis import RedisStore
 
-
-def get_redis_url() -> str:
-    """Get the Redis URL from environment variables."""
-    return os.getenv("REDIS_URL", "redis://localhost:6379")
-
-
-def get_redis_client() -> Redis:
-    """Get a Redis client instance."""
-    return Redis.from_url(get_redis_url())
+from agents.utils import get_redis_client
 
 
 # Singleton instances
@@ -31,14 +21,14 @@ def get_checkpointer() -> RedisSaver:
     return _checkpointer
 
 
-def get_store() -> RedisStore:
+def get_store(namespace: str) -> RedisStore:
     """
     Get a shared RedisStore instance for long-term memory.
     Creates the store on first call, then reuses it.
     """
     global _store
     if _store is None:
-        _store = RedisStore(conn=get_redis_client())
+        _store = RedisStore(conn=get_redis_client(), store_prefix=namespace)
         _store.setup()
     return _store
 
