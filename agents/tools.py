@@ -1,6 +1,13 @@
 import ast
+from datetime import datetime
+from typing import Optional
+
 from langchain.tools import tool, ToolRuntime
-from agents.utils import db
+from langchain_openai import OpenAIEmbeddings
+from redisvl.query import VectorQuery, FilterQuery
+from redisvl.query.filter import Tag, Num
+
+from agents.utils import db, get_concert_index
 
 # ------------------------------------------------------------
 # Music Catalog Subagent Tools
@@ -155,4 +162,136 @@ def get_employee_by_invoice_and_customer(runtime: ToolRuntime, invoice_id: int) 
     return employee_info
 
 invoice_tools = [get_invoices_by_customer_sorted_by_date, get_invoices_sorted_by_unit_price, get_employee_by_invoice_and_customer]
+
+
+# ------------------------------------------------------------
+# Concert Subagent Tools
+# ------------------------------------------------------------
+
+# Embedding model for query vectorization
+_embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+
+
+@tool
+def recommend_concerts(
+    query: Optional[str] = None,
+    artist: Optional[str] = None,
+    genres: Optional[list[str]] = None,
+    location: Optional[str] = None,
+    max_price: Optional[float] = None,
+    limit: int = 5
+) -> list[dict]:
+    """
+    Find concert recommendations using hybrid search (semantic + filters).
+    
+    Args:
+        query: Natural language description of what you're looking for 
+               (e.g., "energetic rock show", "chill jazz night", "outdoor summer festival")
+        artist: Filter by specific artist name
+        genres: Filter by genre tags (e.g., ["rock", "blues"])
+        location: Filter by city/location (e.g., "New York, NY", "Austin, TX")
+        max_price: Maximum ticket price
+        limit: Maximum number of results to return (default 5)
+    
+    Returns:
+        List of matching concerts with details including artist, venue, date, prices, etc.
+    """
+    # Log the search parameters
+    print(f"[Concert Tool] Searching with:")
+    print(f"  query: {query}")
+    print(f"  artist: {artist}")
+    print(f"  genres: {genres}")
+    print(f"  location: {location}")
+    print(f"  max_price: {max_price}")
+    
+    # Build filter expression
+    filters = []
+    
+    # Genre filter
+    if genres:
+        filters.append(Tag("genre") == genres)
+    
+    # Location filter - extract city name (TAG fields split on commas)
+    if location:
+        city = location.split(",")[0].strip()
+        filters.append(Tag("location") == city)
+    
+    # Price filter
+    if max_price:
+        filters.append(Num("price_min") <= max_price)
+    
+    # Only available tickets
+    filters.append(Tag("tickets_available") == "true")
+    
+    # Combine filters
+    filter_expression = None
+    if filters:
+        filter_expression = filters[0]
+        for f in filters[1:]:
+            filter_expression = filter_expression & f
+    
+    # Get the concert index
+    index = get_concert_index()
+    
+    # Return fields for results
+    return_fields = [
+        "id", "name", "artist", "genre", "description", "venue", 
+        "location", "date", "time", "price_min", "price_max", 
+        "tickets_available", "age_restriction"
+    ]
+    
+    # Build and execute query
+    if query or artist:
+        # Hybrid search: vector similarity + filters
+        search_text = query or artist
+        query_embedding = _embeddings.embed_query(search_text)
+        
+        vector_query = VectorQuery(
+            vector=query_embedding,
+            vector_field_name="embedding",
+            filter_expression=filter_expression,
+            return_fields=return_fields,
+            num_results=limit
+        )
+        results = index.query(vector_query)
+    else:
+        # Filter-only search (when no semantic query provided)
+        # Use a simple filter query
+        filter_query = FilterQuery(
+            filter_expression=filter_expression,
+            return_fields=return_fields,
+            num_results=limit
+        )
+        results = index.query(filter_query)
+    
+    # Format results
+    formatted_results = []
+    for r in results:
+        # Convert price strings to floats for formatting
+        price_min = float(r.get('price_min', 0) or 0)
+        price_max = float(r.get('price_max', 0) or 0)
+        
+        concert = {
+            "id": r.get("id"),
+            "name": r.get("name"),
+            "artist": r.get("artist"),
+            "genre": r.get("genre"),
+            "venue": r.get("venue"),
+            "location": r.get("location"),
+            "price_range": f"${price_min:.0f} - ${price_max:.0f}",
+            "tickets_available": r.get("tickets_available"),
+            "age_restriction": r.get("age_restriction"),
+            "description": r.get("description"),
+        }
+        formatted_results.append(concert)
+    
+    print(f"[Concert Tool] Found {len(formatted_results)} concerts")
+    
+    if not formatted_results:
+        return [{"message": "No concerts found matching your criteria. Try broadening your search."}]
+    
+    return formatted_results
+
+
+concert_tools = [recommend_concerts]
 

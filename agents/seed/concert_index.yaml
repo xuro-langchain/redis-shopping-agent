@@ -1,0 +1,67 @@
+index:
+  name: concerts
+  prefix: concert
+  storage_type: json
+
+fields:
+  # Searchable text fields
+  - name: name
+    type: text
+    path: $.name
+
+  - name: artist
+    type: text
+    path: $.artist
+
+  - name: description
+    type: text
+    path: $.description
+
+  - name: venue
+    type: text
+    path: $.venue
+
+  # Filterable tag fields
+  - name: genre
+    type: tag
+    path: $.genre[*]
+
+  - name: location
+    type: tag
+    path: $.location
+
+  - name: tickets_available
+    type: tag
+    path: $.tickets_available
+
+  - name: age_restriction
+    type: tag
+    path: $.age_restriction
+
+  - name: headliner
+    type: tag
+    path: $.headliner
+
+  # Numeric fields for range queries
+  - name: price_min
+    type: numeric
+    path: $.price_min
+
+  - name: price_max
+    type: numeric
+    path: $.price_max
+
+  # Geo field for location-based search
+  - name: coordinates
+    type: geo
+    path: $.coordinates
+
+  # Vector field for semantic search (text-embedding-3-large = 3072 dims)
+  - name: embedding
+    type: vector
+    path: $.embedding
+    attrs:
+      algorithm: hnsw
+      dims: 3072
+      distance_metric: cosine
+

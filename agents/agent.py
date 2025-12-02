@@ -12,7 +12,7 @@ from langgraph.managed.is_last_step import RemainingSteps
 from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 
-from agents.subagents import invoice_subagent, music_subagent
+from agents.subagents import invoice_subagent, music_subagent, concert_subagent
 from agents.prompts import (
     supervisor_system_prompt,
     extract_customer_info_prompt,
@@ -46,7 +46,7 @@ class State(InputState):
     description="""An agent that can assistant with all invoice-related queries. It can retrieve information about a customers past purchases or invoices."""
 )
 def call_invoice_subagent(runtime: ToolRuntime, query: str):
-    print(f"invoice subagent input: {query}")
+    print(f"[Invoice Subagent] Query: {query}")
     result = invoice_subagent.invoke({
         "messages": [{"role": "user", "content": query}],
         "customer_id": runtime.state.get("customer_id", {})
@@ -59,10 +59,33 @@ def call_invoice_subagent(runtime: ToolRuntime, query: str):
     description="""An agent that can assist with all music-related queries. This agent has access to user's saved music preferences. It can also retrieve information about the digital music store's music catalog (albums, tracks, songs, etc.) from the database."""
 )
 def call_music_catalog_subagent(runtime: ToolRuntime, query: str):
-    print(f"music catalog subagent input: {query}")
+    print(f"[Music Subagent] Query: {query}")
     result = music_subagent.invoke({
         "messages": [{"role": "user", "content": query}],
         "loaded_memory": runtime.state.get("loaded_memory", "")
+    })
+    subagent_response = result["messages"][-1].content
+    return subagent_response
+
+@tool(
+    name_or_callable="concert_subagent",
+    description="""An agent that specializes in finding and recommending live concerts and events. It uses the customer's music preferences, location, and budget to provide personalized concert recommendations. Use this for any concert, live show, tour, or event-related queries."""
+)
+def call_concert_subagent(runtime: ToolRuntime, query: str):
+    loaded_memory = runtime.state.get("loaded_memory", "")
+    
+    # Build message with user preferences context
+    if loaded_memory:
+        message_content = f"User preferences:\n{loaded_memory}\n\nRequest: {query}"
+    else:
+        message_content = query
+    
+    print(f"[Concert Subagent] Query: {query}")
+    print(f"[Concert Subagent] User preferences: {loaded_memory or 'None'}")
+    
+    result = concert_subagent.invoke({
+        "messages": [{"role": "user", "content": message_content}],
+        "loaded_memory": loaded_memory
     })
     subagent_response = result["messages"][-1].content
     return subagent_response
@@ -71,8 +94,8 @@ def call_music_catalog_subagent(runtime: ToolRuntime, query: str):
 
 supervisor = create_agent(
     name="supervisor",
-    model="openai:gpt-5", 
-    tools=[call_invoice_subagent, call_music_catalog_subagent], # TODO: Add Opensearch E-commerce Agent as tool
+    model="openai:gpt-4.1",
+    tools=[call_invoice_subagent, call_music_catalog_subagent, call_concert_subagent],
     system_prompt=supervisor_system_prompt, 
     state_schema=State,
     checkpointer=get_checkpointer()
@@ -134,21 +157,33 @@ def load_memory(state: State, store: BaseStore):
     formatted_memory = ""
     if existing_memory and existing_memory.value:
         formatted_memory = format_user_memory(existing_memory.value)
-    return {"loaded_memory" : formatted_memory}
+        print(f"[Memory] Loaded preferences for user {user_id}:")
+        print(f"  {formatted_memory.replace(chr(10), ', ')}")
+    else:
+        print(f"[Memory] No saved preferences for user {user_id}")
+    return {"loaded_memory": formatted_memory}
 
 # User profile structure for creating memory
 class UserProfile(BaseModel):
     customer_id: str = Field(description="The customer ID of the customer")
-    music_preferences: List[str] = Field(description="The music preferences of the customer")
+    music_preferences: List[str] = Field(default_factory=list, description="Music genres the customer enjoys")
+    preferred_location: str | None = Field(default=None, description="Customer's city for concerts (e.g., 'Austin, TX')")
+    max_concert_budget: float | None = Field(default=None, description="Max ticket price the customer will pay")
 
 def create_memory(state: State, store: BaseStore):
+    """Analyzes conversation and saves/updates user preferences."""
     user_id = str(state["customer_id"])
     namespace = ("memory_profile", user_id)
     formatted_memory = state["loaded_memory"]
     formatted_system_message = SystemMessage(content=create_memory_prompt.format(conversation=state["messages"], memory_profile=formatted_memory))
     updated_memory = llm.with_structured_output(UserProfile).invoke([formatted_system_message])
+    
+    print(f"[Memory] Saving preferences for user {user_id}:")
+    print(f"  music_preferences: {updated_memory.music_preferences}")
+    print(f"  preferred_location: {updated_memory.preferred_location}")
+    print(f"  max_concert_budget: {updated_memory.max_concert_budget}")
+    
     key = "user_memory"
-    # Convert Pydantic model to dict for JSON serialization
     store.put(namespace, key, {"memory": updated_memory.model_dump()})
 
 

@@ -1,12 +1,15 @@
 import ast
+import json
 import os
 import sqlite3
 import requests
+from pathlib import Path
 from typing import Optional
+
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
-from redis import Redis
+from redisvl.index import SearchIndex
 from langchain_openai import ChatOpenAI
 from langchain_community.utilities.sql_database import SQLDatabase
 
@@ -27,9 +30,56 @@ def get_redis_url() -> str:
     return os.getenv("REDIS_URL", "redis://localhost:6379")
 
 
-def get_redis_client() -> Redis:
-    """Get a Redis client instance."""
+def get_redis_client():
+    """Get a Redis client (uses REDIS_URL env var)."""
+    from redis import Redis
     return Redis.from_url(get_redis_url())
+
+
+# ------------------------------------------------------------
+# Concert Index & Seeding
+# ------------------------------------------------------------
+SEED_DIR = Path(__file__).parent / "seed"
+CONCERTS_JSON_PATH = SEED_DIR / "concerts.json"
+CONCERT_INDEX_SCHEMA_PATH = SEED_DIR / "concert_index.yaml"
+
+# Singleton for concert index
+_concert_index: SearchIndex | None = None
+
+
+def get_concert_index() -> SearchIndex:
+    """
+    Get a shared SearchIndex instance for concerts.
+    Creates and connects the index on first call, then reuses it.
+    """
+    global _concert_index
+    if _concert_index is None:
+        _concert_index = SearchIndex.from_yaml(str(CONCERT_INDEX_SCHEMA_PATH))
+        _concert_index.connect(get_redis_url())
+    return _concert_index
+
+
+def seed_concerts(force: bool = False) -> None:
+    """
+    Seed Redis with concerts from concerts.json.
+    Creates index and loads data if not present.
+
+    Args:
+        force: If True, drop existing index and reseed all data.
+    """
+    index = get_concert_index()
+
+    if force and index.exists():
+        index.delete(drop=True)
+
+    if not index.exists():
+        index.create(overwrite=False)
+
+        with open(CONCERTS_JSON_PATH, "r") as f:
+            concerts = json.load(f)
+        
+        index.load(concerts, id_field="id")
+        print(f"[Seed] Loaded {len(concerts)} concerts to Redis")
 
 
 # ------------------------------------------------------------
@@ -80,14 +130,22 @@ def get_customer_id_from_identifier(identifier: str) -> Optional[int]:
             return formatted_result[0][0]
     return None 
 
-def format_user_memory(user_data):
-    """Formats music preferences from users, if available."""
-    profile = user_data['memory']
-    result = ""
-    # Handle both dict (from Redis) and Pydantic model formats
-    if isinstance(profile, dict):
-        if profile.get('music_preferences'):
-            result += f"Music Preferences: {', '.join(profile['music_preferences'])}"
-    elif hasattr(profile, 'music_preferences') and profile.music_preferences:
-        result += f"Music Preferences: {', '.join(profile.music_preferences)}"
-    return result.strip()
+def format_user_memory(user_data: dict) -> str:
+    """Format user preferences from memory profile for display."""
+    profile = user_data.get('memory', {})
+    parts = []
+
+    if profile.get('music_preferences'):
+        parts.append(f"Music Preferences: {', '.join(profile['music_preferences'])}")
+    if profile.get('preferred_location'):
+        parts.append(f"Preferred Location: {profile['preferred_location']}")
+    if profile.get('max_concert_budget'):
+        parts.append(f"Max Concert Budget: ${profile['max_concert_budget']}")
+
+    return "\n".join(parts)
+
+
+# ------------------------------------------------------------
+# Auto-seed concert data on module import
+# ------------------------------------------------------------
+seed_concerts()
