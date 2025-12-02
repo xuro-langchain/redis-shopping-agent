@@ -1,18 +1,36 @@
 import ast
+import os
 import sqlite3
 import requests
 from typing import Optional
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
+from redis import Redis
 from langchain_openai import ChatOpenAI
 from langchain_community.utilities.sql_database import SQLDatabase
 
 
+# ------------------------------------------------------------
+# LLM Utilities
+# ------------------------------------------------------------
 # NOTE: Configure the LLM that you want to use
-llm = ChatOpenAI(model_name="gpt-4o", temperature=0)
+llm = ChatOpenAI(model_name="gpt-4.1", temperature=0)
 # llm = ChatAnthropic(model_name="claude-3-5-sonnet-20240620", temperature=0)
 # llm = ChatVertexAI(model_name="gemini-1.5-flash-002", temperature=0)
+
+# ------------------------------------------------------------
+# Redis Utilities
+# ------------------------------------------------------------
+def get_redis_url() -> str:
+    """Get the Redis URL from environment variables."""
+    return os.getenv("REDIS_URL", "redis://localhost:6379")
+
+
+def get_redis_client() -> Redis:
+    """Get a Redis client instance."""
+    return Redis.from_url(get_redis_url())
+
 
 # ------------------------------------------------------------
 # Database Utilities
@@ -66,6 +84,10 @@ def format_user_memory(user_data):
     """Formats music preferences from users, if available."""
     profile = user_data['memory']
     result = ""
-    if hasattr(profile, 'music_preferences') and profile.music_preferences:
+    # Handle both dict (from Redis) and Pydantic model formats
+    if isinstance(profile, dict):
+        if profile.get('music_preferences'):
+            result += f"Music Preferences: {', '.join(profile['music_preferences'])}"
+    elif hasattr(profile, 'music_preferences') and profile.music_preferences:
         result += f"Music Preferences: {', '.join(profile.music_preferences)}"
     return result.strip()

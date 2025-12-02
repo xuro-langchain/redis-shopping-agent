@@ -1,4 +1,4 @@
-from typing import Annotated, List,NotRequired
+from typing import Annotated, List, NotRequired
 from typing_extensions import TypedDict
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,7 @@ from langgraph.managed.is_last_step import RemainingSteps
 from langgraph.store.base import BaseStore
 from langgraph.types import interrupt
 
-from agents.subagents import invoice_subagent
+from agents.subagents import invoice_subagent, music_subagent
 from agents.prompts import (
     supervisor_system_prompt,
     extract_customer_info_prompt,
@@ -24,6 +24,7 @@ from agents.utils import (
     get_customer_id_from_identifier,
     format_user_memory
 )
+from agents.checkpoint import get_checkpointer, get_store
 
 
 # ------------------------------------------------------------
@@ -45,7 +46,6 @@ class State(InputState):
     description="""An agent that can assistant with all invoice-related queries. It can retrieve information about a customers past purchases or invoices."""
 )
 def call_invoice_subagent(runtime: ToolRuntime, query: str):
-    print('made it here')
     print(f"invoice subagent input: {query}")
     result = invoice_subagent.invoke({
         "messages": [{"role": "user", "content": query}],
@@ -54,14 +54,28 @@ def call_invoice_subagent(runtime: ToolRuntime, query: str):
     subagent_response = result["messages"][-1].content
     return subagent_response
 
+@tool(
+    name_or_callable="music_catalog_subagent",
+    description="""An agent that can assist with all music-related queries. This agent has access to user's saved music preferences. It can also retrieve information about the digital music store's music catalog (albums, tracks, songs, etc.) from the database."""
+)
+def call_music_catalog_subagent(runtime: ToolRuntime, query: str):
+    print(f"music catalog subagent input: {query}")
+    result = music_subagent.invoke({
+        "messages": [{"role": "user", "content": query}],
+        "loaded_memory": runtime.state.get("loaded_memory", "")
+    })
+    subagent_response = result["messages"][-1].content
+    return subagent_response
+
 # TODO: Add Opensearch E-commerce Agent as tool
 
 supervisor = create_agent(
-    model="openai:gpt-4o", 
-    tools=[call_invoice_subagent], # TODO: Add Opensearch E-commerce Agent as tool
     name="supervisor",
+    model="openai:gpt-5", 
+    tools=[call_invoice_subagent, call_music_catalog_subagent], # TODO: Add Opensearch E-commerce Agent as tool
     system_prompt=supervisor_system_prompt, 
-    state_schema=State, 
+    state_schema=State,
+    checkpointer=get_checkpointer()
 )
 
 # ------------------------------------------------------------
@@ -114,7 +128,7 @@ def should_interrupt(state: State):
 
 def load_memory(state: State, store: BaseStore):
     """Loads music preferences from users, if available."""
-    user_id = state["customer_id"]
+    user_id = str(state["customer_id"])
     namespace = ("memory_profile", user_id)
     existing_memory = store.get(namespace, "user_memory")
     formatted_memory = ""
@@ -134,7 +148,8 @@ def create_memory(state: State, store: BaseStore):
     formatted_system_message = SystemMessage(content=create_memory_prompt.format(conversation=state["messages"], memory_profile=formatted_memory))
     updated_memory = llm.with_structured_output(UserProfile).invoke([formatted_system_message])
     key = "user_memory"
-    store.put(namespace, key, {"memory": updated_memory})
+    # Convert Pydantic model to dict for JSON serialization
+    store.put(namespace, key, {"memory": updated_memory.model_dump()})
 
 
 # ------------------------------------------------------------
@@ -161,4 +176,8 @@ workflow_builder.add_edge("load_memory", "supervisor")
 workflow_builder.add_edge("supervisor", "create_memory")
 workflow_builder.add_edge("create_memory", END)
 
-graph = workflow_builder.compile(name="multi_agent_verify")
+graph = workflow_builder.compile(
+    name="multi_agent_verify",
+    checkpointer=get_checkpointer(),
+    store=get_store(namespace="preferences")
+)

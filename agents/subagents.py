@@ -3,9 +3,11 @@ from typing import Annotated, NotRequired
 from langgraph.graph.message import AnyMessage, add_messages
 from langchain.agents import create_agent
 
-from agents.prompts import invoice_subagent_prompt
-from agents.tools import invoice_tools
+from agents.prompts import invoice_subagent_prompt, music_subagent_prompt
+from agents.tools import invoice_tools, music_tools
 from agents.utils import llm
+from agents.checkpoint import get_checkpointer
+
 
 class InputState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
@@ -20,10 +22,23 @@ class State(InputState):
 # ------------------------------------------------------------
 invoice_subagent = create_agent(
     llm, 
+    name="invoice_subagent",
     tools=invoice_tools, 
-    name="invoice_subagent", 
     system_prompt=invoice_subagent_prompt, 
-    state_schema=State
+    state_schema=State,
+    checkpointer=get_checkpointer()
+)
+
+# ------------------------------------------------------------
+# Music Catalog Subagent
+# ------------------------------------------------------------
+music_subagent = create_agent(
+    llm, 
+    name="music_subagent",
+    tools=music_tools, 
+    system_prompt=music_subagent_prompt, 
+    state_schema=State,
+    checkpointer=get_checkpointer()
 )
 
 # ------------------------------------------------------------

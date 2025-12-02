@@ -1,7 +1,7 @@
 [project]
-name = "aws-shopping-agent"
+name = "redis-music-store-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "Multi-agent music store customer support powered by LangGraph and Redis"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -12,15 +12,26 @@ dependencies = [
     "langchain-chroma>=1.0.0",
     "langchain-community>=0.4",
     "langchain-openai>=1.0.1",
+    "langchain-redis>=0.2.5",
     "langgraph>=1.0.1",
+    "langgraph-api>=0.4.44",
+    "langgraph-checkpoint-redis>=0.2.1",
     "langgraph-cli[inmem]>=0.4.4",
     "langsmith>=0.4.37",
     "notebook>=7.4.7",
     "openai>=2.6.0",
     "openevals>=0.1.0",
     "protobuf>=6.33.0",
-    "pyppeteer>=2.0.0",
     "python-dotenv>=1.1.1",
+    "redis>=5.0.0",
     "requests>=2.32.5",
+    "rich>=14.0.0",
     "scikit-learn>=1.7.2",
+    "typer>=0.15.0",
 ]
+
+[project.scripts]
+music-store = "agents.cli:app"
+
+[tool.uv]
+package = true
